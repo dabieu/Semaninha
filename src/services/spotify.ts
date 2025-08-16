@@ -23,6 +23,7 @@ export class SpotifyService {
   private static instance: SpotifyService;
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
+  private username: string | null = null;
   private spotifyProxy = SpotifyProxy.getInstance();
 
   static getInstance(): SpotifyService {
@@ -34,6 +35,32 @@ export class SpotifyService {
 
   // Generate authorization URL
   getAuthUrl(): string {
+    const scopes = [
+      'user-top-read',
+      'user-read-private',
+      'user-read-email'
+    ].join(' ');
+
+    // Clear any existing state before generating new one
+    localStorage.removeItem('spotify_auth_state');
+    
+    const state = this.generateRandomString(16);
+    localStorage.setItem('spotify_auth_state', state);
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: CLIENT_ID,
+      scope: scopes,
+      redirect_uri: REDIRECT_URI,
+      state: state,
+      prompt: 'login', // Force login screen to appear
+    });
+
+    return `https://accounts.spotify.com/authorize?${params.toString()}`;
+  }
+
+  // Generate authorization URL for mobile (same screen)
+  getMobileAuthUrl(): string {
     const scopes = [
       'user-top-read',
       'user-read-private',
@@ -99,37 +126,63 @@ export class SpotifyService {
   async handleCallbackDirect(code: string, state: string): Promise<{ username: string }> {
     try {
       console.log('Processing callback without state validation for popup');
-      
-      // Use proxy to avoid CORS issues
       const data = await this.spotifyProxy.exchangeCodeForToken(code, REDIRECT_URI);
-
+      console.log('Token data received:', { 
+        hasAccessToken: !!data.access_token, 
+        hasRefreshToken: !!data.refresh_token,
+        tokenType: data.token_type,
+        expiresIn: data.expires_in
+      });
+      
+      // Se chegou até aqui, o token foi obtido com sucesso
       this.accessToken = data.access_token;
       this.refreshToken = data.refresh_token;
-
-      // Store tokens in localStorage
       if (this.accessToken) {
         localStorage.setItem('spotify_access_token', this.accessToken);
+        console.log('Access token stored in localStorage');
       }
       if (this.refreshToken) {
         localStorage.setItem('spotify_refresh_token', this.refreshToken);
+        console.log('Refresh token stored in localStorage');
       }
-
-      // Clear the state after successful authentication
       localStorage.removeItem('spotify_auth_state');
-
-      // Get user profile
+      
+      console.log('About to make authenticated request to /v1/me with token:', this.accessToken ? 'Token available' : 'No token');
       const userResponse = await this.makeAuthenticatedRequest('https://api.spotify.com/v1/me');
-      return { username: userResponse.display_name || userResponse.id };
-    } catch (error) {
+      console.log('User profile response:', userResponse);
+      
+      // Se chegou até aqui, a autenticação foi 100% bem-sucedida
+      console.log('✅ Autenticação Spotify concluída com sucesso!');
+      const username = userResponse.display_name || userResponse.id || 'Usuário Spotify';
+      this.username = username;
+      return { username };
+    } catch (error: any) {
       console.error('Error exchanging code for token (direct):', error);
+      
+      // Se já temos um token válido e conseguimos fazer a chamada para /v1/me,
+      // não devemos propagar o erro para o usuário
+      if (this.accessToken) {
+        try {
+          const userResponse = await this.makeAuthenticatedRequest('https://api.spotify.com/v1/me');
+          console.log('✅ Autenticação recuperada com token existente!');
+          return { username: userResponse.display_name || userResponse.id };
+        } catch (fallbackError) {
+          console.error('Fallback authentication also failed:', fallbackError);
+        }
+      }
+      
       throw error;
     }
   }
 
-  // Check if user is authenticated
+  // Verificar se o usuário está autenticado
   isAuthenticated(): boolean {
-    const token = localStorage.getItem('spotify_access_token');
-    return !!token;
+    return !!(this.accessToken || localStorage.getItem('spotify_access_token'));
+  }
+
+  // Obter o nome do usuário atual
+  getCurrentUsername(): string | null {
+    return this.username;
   }
 
   // Get stored username
@@ -198,17 +251,27 @@ export class SpotifyService {
   // Make authenticated request with token refresh
   private async makeAuthenticatedRequest(url: string): Promise<any> {
     try {
+      console.log('Making authenticated request to:', url);
+      console.log('Using access token:', this.accessToken ? 'Token available' : 'No token');
+      
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${this.accessToken || ''}`,
         },
       });
       
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Response error:', errorText);
         throw new Error(`HTTP ${response.status}`);
       }
       
-      return await response.json();
+      const data = await response.json();
+      console.log('Response data:', data);
+      return data;
     } catch (error: any) {
       if (error.message?.includes('401') || error.status === 401) {
         // Token expired, try to refresh

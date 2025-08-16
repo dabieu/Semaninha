@@ -1,9 +1,23 @@
 // Simple proxy solution for Spotify authentication
 // This creates a popup window to handle the OAuth flow
 
+import axios from 'axios'; // Added import for axios
+
 export class SpotifyProxy {
   private static instance: SpotifyProxy;
+  private currentProxyIndex = 0;
   
+  // Lista de proxies alternativos
+  private proxies = [
+    'https://corsproxy.io/?',
+    'https://api.allorigins.win/raw?url=',
+    'https://cors-anywhere.herokuapp.com/',
+    'https://thingproxy.freeboard.io/fetch/',
+    'https://cors.bridged.cc/',
+    'https://api.codetabs.com/v1/proxy?quest=',
+    'https://cors.eu.org/'
+  ];
+
   static getInstance(): SpotifyProxy {
     if (!SpotifyProxy.instance) {
       SpotifyProxy.instance = new SpotifyProxy();
@@ -11,165 +25,141 @@ export class SpotifyProxy {
     return SpotifyProxy.instance;
   }
 
+  // Obter proxy atual
+  private getCurrentProxy(): string {
+    return this.proxies[this.currentProxyIndex];
+  }
+
+  // Tentar próximo proxy em caso de falha
+  private nextProxy(): void {
+    this.currentProxyIndex = (this.currentProxyIndex + 1) % this.proxies.length;
+    console.log(`Tentando próximo proxy: ${this.getCurrentProxy()}`);
+  }
+
+  // Reset para primeiro proxy
+  private resetProxy(): void {
+    this.currentProxyIndex = 0;
+  }
+
   async exchangeCodeForToken(code: string, redirectUri: string): Promise<any> {
-    // Try Supabase Edge Function first, fallback to direct request
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    
-    if (supabaseUrl) {
-      try {
-        const response = await fetch(`${supabaseUrl}/functions/v1/spotify-auth?action=token`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            code: code,
-            redirect_uri: redirectUri,
-          }),
-        });
-
-        if (response.ok) {
-          return await response.json();
-        }
-      } catch (error) {
-        console.warn('Supabase function failed, trying alternative approach:', error);
-      }
-    }
-
-    // Fallback: Use a different CORS proxy or direct request
-    const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-    const CLIENT_SECRET = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
-
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-      throw new Error('Spotify credentials not configured');
-    }
-
-    const tokenData = new URLSearchParams({
+    const tokenUrl = 'https://accounts.spotify.com/api/token';
+    const body = new URLSearchParams({
       grant_type: 'authorization_code',
       code: code,
       redirect_uri: redirectUri,
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+      client_id: import.meta.env.VITE_SPOTIFY_CLIENT_ID,
+      client_secret: import.meta.env.VITE_SPOTIFY_CLIENT_SECRET,
     });
 
-    try {
-      // Try direct request first (works in some environments)
-      const response = await fetch('https://accounts.spotify.com/api/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: tokenData,
-      });
+    let lastError: any;
+    let successfulResponse: any = null;
 
-      if (response.ok) {
-        return await response.json();
+    for (let attempt = 0; attempt < this.proxies.length; attempt++) {
+      const currentProxy = this.proxies[attempt];
+      
+      try {
+        console.log(`Tentativa ${attempt + 1}: Usando proxy ${currentProxy}`);
+        
+        const response = await axios.post(`${currentProxy}${tokenUrl}`, body, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          timeout: 10000, // 10 segundos de timeout
+        });
+
+        console.log('Resposta do proxy:', {
+          status: response.status,
+          headers: response.headers,
+          data: response.data,
+          dataKeys: response.data ? Object.keys(response.data) : 'No data'
+        });
+
+        // Verificar se a resposta tem os campos necessários
+        if (!response.data || !response.data.access_token) {
+          console.error('Resposta do proxy não contém access_token:', response.data);
+          throw new Error('Resposta inválida do proxy - sem access_token');
+        }
+
+        console.log('Token obtido com sucesso usando proxy:', currentProxy);
+        this.resetProxy(); // Reset para primeiro proxy em caso de sucesso
+        successfulResponse = response.data;
+        break; // Sair do loop após sucesso
+      } catch (error: any) {
+        console.warn(`Proxy ${currentProxy} falhou:`, error.message);
+        lastError = error;
+        // Continuar para o próximo proxy
       }
+    }
 
-      // If direct request fails, try a simple proxy
-      const proxyResponse = await fetch('https://corsproxy.io/?https://accounts.spotify.com/api/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: tokenData,
-      });
+    // Se tivemos sucesso com pelo menos um proxy, retornar o resultado
+    if (successfulResponse) {
+      return successfulResponse;
+    }
 
-      if (!proxyResponse.ok) {
-        const errorText = await proxyResponse.text();
-        console.error('Proxy error response:', errorText);
-        throw new Error(`HTTP ${proxyResponse.status}: ${errorText}`);
-      }
-
-      return await proxyResponse.json();
-    } catch (error) {
-      console.error('Token exchange failed:', error);
-      // Retornar mensagem de erro mais específica sem duplicar prefixos
-      if (error instanceof Error) {
-        throw error; // Manter a mensagem original se já for um Error
-      } else {
-        throw new Error('Não foi possível conectar ao Spotify. Verifique suas credenciais e configuração do redirect URI.');
-      }
+    // Se chegou até aqui, todos os proxies falharam
+    console.error('Todos os proxies falharam');
+    if (lastError instanceof Error) {
+      throw lastError;
+    } else {
+      throw new Error('Não foi possível conectar ao Spotify. Todos os proxies falharam.');
     }
   }
 
   async refreshToken(refreshToken: string): Promise<any> {
-    // Try Supabase Edge Function first, fallback to direct request
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    
-    if (supabaseUrl) {
-      try {
-        const response = await fetch(`${supabaseUrl}/functions/v1/spotify-auth?action=refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            refresh_token: refreshToken,
-          }),
-        });
-
-        if (response.ok) {
-          return await response.json();
-        }
-      } catch (error) {
-        console.warn('Supabase function failed, trying alternative approach:', error);
-      }
-    }
-
-    // Fallback: Use direct request or alternative proxy
-    const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-    const CLIENT_SECRET = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
-
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-      throw new Error('Spotify credentials not configured');
-    }
-
-    const refreshData = new URLSearchParams({
+    const tokenUrl = 'https://accounts.spotify.com/api/token';
+    const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+      client_id: import.meta.env.VITE_SPOTIFY_CLIENT_ID,
+      client_secret: import.meta.env.VITE_SPOTIFY_CLIENT_SECRET,
     });
 
-    try {
-      // Try direct request first
-      const response = await fetch('https://accounts.spotify.com/api/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: refreshData,
-      });
+    // Tentar com diferentes proxies até funcionar
+    let lastError: any;
+    
+    for (let attempt = 0; attempt < this.proxies.length; attempt++) {
+      const currentProxy = this.proxies[attempt];
+      
+      try {
+        console.log(`Refresh - Tentativa ${attempt + 1}: Usando proxy ${currentProxy}`);
+        
+        const response = await axios.post(`${currentProxy}${tokenUrl}`, body, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          timeout: 10000, // 10 segundos de timeout
+        });
 
-      if (response.ok) {
-        return await response.json();
+        console.log('Refresh - Resposta do proxy:', {
+          status: response.status,
+          headers: response.headers,
+          data: response.data,
+          dataKeys: response.data ? Object.keys(response.data) : 'No data'
+        });
+
+        // Verificar se a resposta tem os campos necessários
+        if (!response.data || !response.data.access_token) {
+          console.error('Refresh - Resposta do proxy não contém access_token:', response.data);
+          throw new Error('Resposta inválida do proxy - sem access_token');
+        }
+
+        console.log('Token renovado com sucesso usando proxy:', currentProxy);
+        this.resetProxy(); // Reset para primeiro proxy em caso de sucesso
+        return response.data;
+        
+      } catch (error: any) {
+        console.warn(`Refresh - Proxy ${currentProxy} falhou:`, error.message);
+        lastError = error;
+        // Não precisa chamar nextProxy() aqui, o loop já avança
       }
+    }
 
-      // If direct request fails, try a simple proxy
-      const proxyResponse = await fetch('https://corsproxy.io/?https://accounts.spotify.com/api/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: refreshData,
-      });
-
-      if (!proxyResponse.ok) {
-        const errorText = await proxyResponse.text();
-        console.error('Proxy error response:', errorText);
-        throw new Error(`HTTP ${proxyResponse.status}: ${errorText}`);
-      }
-
-      return await proxyResponse.json();
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      // Retornar mensagem de erro mais específica sem duplicar prefixos
-      if (error instanceof Error) {
-        throw error; // Manter a mensagem original se já for um Error
-      } else {
-        throw new Error('Não foi possível renovar a conexão com o Spotify.');
-      }
+    // Se todos os proxies falharam
+    console.error('Refresh - Todos os proxies falharam');
+    if (lastError instanceof Error) {
+      throw lastError;
+    } else {
+      throw new Error('Não foi possível renovar o token do Spotify. Todos os proxies falharam.');
     }
   }
 }

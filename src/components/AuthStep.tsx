@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Music, User, ArrowRight, Check, AlertCircle } from 'lucide-react';
+import { useMobile } from '../hooks/useMobile';
 import { AuthMethod } from '../App';
 import { SpotifyService } from '../services/spotify';
 import { LastFmService } from '../services/lastfm';
@@ -14,7 +15,7 @@ interface AuthStepProps {
   onNext: () => void;
 }
 
-export function AuthStep({
+export const AuthStep: React.FC<AuthStepProps> = ({
   authMethod,
   isAuthenticated,
   username,
@@ -22,11 +23,14 @@ export function AuthStep({
   onAuthenticate,
   onLogout,
   onNext
-}: AuthStepProps) {
+}) => {
   const [lastfmInput, setLastfmInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const [isLoading, setIsLoading] = useState(false);
+  const [collageUrl, setCollageUrl] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const isMobile = useMobile(); // Hook para detectar dispositivo móvel
+  
   const spotifyService = SpotifyService.getInstance();
   const lastfmService = LastFmService.getInstance();
 
@@ -107,79 +111,111 @@ export function AuthStep({
     setIsLoading(true);
     
     try {
-      const authUrl = spotifyService.getAuthUrl();
-      
-      // Abrir autenticação em nova janela popup
-      const popup = window.open(
-        authUrl,
-        'spotify-auth',
-        'width=500,height=600,scrollbars=yes,resizable=yes'
-      );
-      
-      if (!popup) {
-        throw new Error('Popup bloqueado pelo navegador. Permita popups para este site.');
-      }
-      
-      // Monitorar quando a janela é fechada
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkClosed);
-          setIsLoading(false);
-          // Verificar se há tokens armazenados
-          checkExistingAuth();
+      if (isMobile) {
+        // Em dispositivos móveis, redirecionar na mesma tela
+        console.log('Dispositivo móvel detectado - redirecionando na mesma tela');
+        const authUrl = spotifyService.getMobileAuthUrl();
+        window.location.href = authUrl;
+      } else {
+        // Em desktop, usar popup
+        console.log('Desktop detectado - abrindo popup');
+        const authUrl = spotifyService.getAuthUrl();
+        const popup = window.open(authUrl, 'spotify-auth', 'width=500,height=600,scrollbars=yes,resizable=yes');
+        
+        if (!popup) {
+          throw new Error('Popup bloqueado. Permita popups para este site.');
         }
-      }, 1000);
-      
-      // Monitorar mudanças na URL da janela popup
-      const checkUrl = setInterval(() => {
-        try {
+
+        // Monitorar o popup
+        const checkClosed = setInterval(() => {
           if (popup.closed) {
-            clearInterval(checkUrl);
-            return;
+            clearInterval(checkClosed);
+            setIsLoading(false);
+            setError('Autenticação cancelada ou popup fechado.');
           }
-          
-          const popupUrl = popup.location.href;
-          if (popupUrl.includes('code=') && popupUrl.includes('state=')) {
-            // Extrair code e state da URL
-            const urlParams = new URLSearchParams(popupUrl.split('?')[1]);
-            const code = urlParams.get('code');
-            const state = urlParams.get('state');
-            
-            if (code && state) {
+        }, 1000);
+
+        // Monitorar mudanças na URL do popup
+        const checkUrl = setInterval(() => {
+          try {
+            const currentUrl = popup.location.href;
+            if (currentUrl.includes('?code=')) {
               clearInterval(checkUrl);
-              popup.close();
-              // Processar autenticação diretamente sem validação de estado
-              processSpotifyAuth(code, state);
+              clearInterval(checkClosed);
+              
+              const urlParams = new URLSearchParams(currentUrl.split('?')[1]);
+              const code = urlParams.get('code');
+              const state = urlParams.get('state');
+              
+              if (code && state) {
+                popup.close();
+                processSpotifyAuth(code, state);
+              }
             }
+          } catch (error) {
+            // Cross-origin error, popup ainda não carregou
           }
-        } catch (error: any) {
-          // Erro de cross-origin, continuar monitorando
-        }
-      }, 500);
-      
+        }, 500);
+      }
     } catch (error: any) {
-      console.error('Spotify auth error:', error);
       setError(error.message || 'Erro ao iniciar autenticação com Spotify');
       setIsLoading(false);
     }
   };
 
-  // Função separada para processar autenticação do popup
-  const processSpotifyAuth = async (code: string, state: string) => {
-    setIsLoading(true);
-    setError(null);
-
+  // Processar autenticação Spotify
+  const processSpotifyAuth = useCallback(async (code: string, state: string) => {
     try {
-      // Usar o serviço diretamente sem validação de estado
-      const { username } = await spotifyService.handleCallbackDirect(code, state);
-      onAuthenticate(username);
+      setError(null);
+      setIsLoading(true);
+      
+      console.log('Processando autenticação Spotify...');
+      const result = await spotifyService.handleCallbackDirect(code, state);
+      
+      console.log('✅ Autenticação Spotify bem-sucedida:', result);
+      
+      // Limpar estado de loading e erro
+      setIsLoading(false);
+      setError(null);
+      
+      // Atualizar estado de autenticação
+      onAuthMethodChange('spotify');
+      onAuthenticate(result.username);
+      
     } catch (error: any) {
       console.error('Spotify callback error:', error);
-      setError(error.message || 'Erro desconhecido na autenticação');
-    } finally {
+      
+      // Verificar se já temos um usuário autenticado (sucesso silencioso)
+      if (spotifyService.isAuthenticated()) {
+        console.log('✅ Usuário já autenticado, ignorando erro de proxy');
+        setIsLoading(false);
+        setError(null);
+        onAuthMethodChange('spotify');
+        onAuthenticate('Usuário Spotify');
+        return;
+      }
+      
+      // Se não temos usuário autenticado, mostrar erro
       setIsLoading(false);
+      setError('Erro na autenticação com Spotify. Tente novamente.');
     }
-  };
+  }, [spotifyService, onAuthMethodChange, onAuthenticate]);
+
+  // Processar callback do Spotify quando for mobile (redirecionamento na mesma tela)
+  useEffect(() => {
+    if (isMobile && authMethod === 'spotify' && !isAuthenticated) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+      
+      if (code && state) {
+        console.log('Callback do Spotify detectado em dispositivo móvel');
+        // Limpar a URL para não mostrar o code
+        window.history.replaceState({}, document.title, window.location.pathname);
+        processSpotifyAuth(code, state);
+      }
+    }
+  }, [isMobile, authMethod, isAuthenticated, processSpotifyAuth]);
 
   const handleLastfmAuth = async () => {
     if (!lastfmInput.trim()) return;
@@ -278,17 +314,17 @@ export function AuthStep({
               <button
                 onClick={handleSpotifyAuth}
                 disabled={isLoading}
-                className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-500/50 text-white px-8 py-3 rounded-lg font-semibold transition-colors duration-200 flex items-center mx-auto"
+                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center"
               >
                 {isLoading ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                     Conectando...
                   </>
                 ) : (
                   <>
                     <Music className="h-5 w-5 mr-2" />
-                    Conectar com Spotify
+                    {isMobile ? 'Conectar com Spotify' : 'Conectar com Spotify (Popup)'}
                   </>
                 )}
               </button>
