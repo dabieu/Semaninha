@@ -3,6 +3,7 @@ import { Download, Copy, Instagram, MessageCircle, RefreshCw, ArrowLeft, Check, 
 import { GridSize, TimePeriod } from '../App';
 import { CollageGenerator } from '../services/collageGenerator';
 import { Tooltip } from './Tooltip';
+import { useMobile } from '../hooks/useMobile';
 
 interface ResultStepProps {
   collageUrl: string;
@@ -25,6 +26,7 @@ export function ResultStep({
   const [downloading, setDownloading] = React.useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const collageGenerator = new CollageGenerator();
+  const isMobile = useMobile();
 
   // Focar no topo da tela quando o componente for montado
   useEffect(() => {
@@ -46,18 +48,21 @@ export function ResultStep({
   };
 
   const handleCopyToClipboard = async () => {
+    console.log('Iniciando cópia, dispositivo móvel:', isMobile);
+    
     try {
-      // Convert data URL to blob
-      const response = await fetch(collageUrl);
-      const blob = await response.blob();
-      
-      const item = new ClipboardItem({ 'image/png': blob });
-      await navigator.clipboard.write([item]);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (isMobile) {
+        // Para dispositivos móveis, usar uma abordagem diferente
+        console.log('Usando método mobile para cópia');
+        await handleMobileCopy();
+      } else {
+        // Para desktop, usar a API Clipboard padrão
+        console.log('Usando método desktop para cópia');
+        await handleDesktopCopy();
+      }
     } catch (err) {
       console.error('Erro ao copiar imagem:', err);
-      // Fallback: try to copy the URL
+      // Fallback: tentar copiar a URL
       try {
         await navigator.clipboard.writeText(collageUrl);
         setCopied(true);
@@ -65,6 +70,129 @@ export function ResultStep({
       } catch (fallbackErr) {
         console.error('Erro ao copiar URL:', fallbackErr);
       }
+    }
+  };
+
+  const handleDesktopCopy = async () => {
+    // Convert data URL to blob
+    const response = await fetch(collageUrl);
+    const blob = await response.blob();
+    
+    const item = new ClipboardItem({ 'image/png': blob });
+    await navigator.clipboard.write([item]);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleMobileCopy = async () => {
+    try {
+      // Para dispositivos móveis, tentar usar a API Clipboard se disponível
+      if (navigator.clipboard && navigator.clipboard.write) {
+        try {
+          const response = await fetch(collageUrl);
+          const blob = await response.blob();
+          
+          const item = new ClipboardItem({ 'image/png': blob });
+          await navigator.clipboard.write([item]);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+          return;
+        } catch (clipboardErr) {
+          console.log('Erro na API Clipboard, tentando alternativa...', clipboardErr);
+        }
+      }
+    } catch (err) {
+      console.log('API Clipboard não disponível no mobile, tentando alternativa...');
+    }
+
+    // Fallback para dispositivos móveis: usar canvas para gerar blob
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      // Adicionar timeout para evitar travamentos
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout ao carregar imagem')), 10000);
+      });
+      
+      const imageLoadPromise = new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('Erro ao carregar imagem'));
+      });
+      
+      // Race entre timeout e carregamento da imagem
+      await Promise.race([imageLoadPromise, timeoutPromise]);
+      
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          throw new Error('Não foi possível criar contexto do canvas');
+        }
+        
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        // Tentar copiar usando o canvas
+        canvas.toBlob(async (blob) => {
+          if (blob && navigator.clipboard && navigator.clipboard.write) {
+            try {
+              const item = new ClipboardItem({ 'image/png': blob });
+              await navigator.clipboard.write([item]);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+              return;
+            } catch (writeErr) {
+              console.log('Erro ao escrever no clipboard:', writeErr);
+              // Fallback: copiar a URL
+              await fallbackCopyUrl();
+            }
+          } else {
+            // Fallback: copiar a URL
+            await fallbackCopyUrl();
+          }
+        }, 'image/png');
+      } catch (canvasErr) {
+        console.log('Erro no canvas:', canvasErr);
+        // Fallback: copiar a URL
+        await fallbackCopyUrl();
+      }
+      
+      img.src = collageUrl;
+    } catch (mobileErr) {
+      console.error('Erro na cópia mobile:', mobileErr);
+      // Fallback final: copiar a URL
+      await fallbackCopyUrl();
+    }
+  };
+
+  const fallbackCopyUrl = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(collageUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        // Fallback para navegadores muito antigos
+        const textArea = document.createElement('textarea');
+        textArea.value = collageUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch (finalErr) {
+      console.error('Erro final ao copiar:', finalErr);
+      // Mostrar mensagem de erro para o usuário
+      alert('Não foi possível copiar a imagem. Tente fazer o download.');
     }
   };
 
