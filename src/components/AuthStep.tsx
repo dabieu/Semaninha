@@ -320,9 +320,6 @@ export function AuthStep({
                   )}
                 </button>
               </div>
-              <p className="text-white/60 text-xs mt-2">
-                Certifique-se de que seu perfil Last.fm é público
-              </p>
             </div>
           )}
 
