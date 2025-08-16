@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ArrowRight, ArrowLeft, Grid3X3, Calendar, Music, Disc, Crown, Lock } from 'lucide-react';
 import { GridSize, TimePeriod } from '../App';
 import { Tooltip } from './Tooltip';
@@ -43,6 +43,11 @@ export function ConfigStep({
   onNext,
   onBack
 }: ConfigStepProps) {
+  // Focar no topo da tela quando o componente for montado
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   return (
     <div className="text-center">
       <h2 className="text-2xl font-bold text-white mb-1">Personalize sua colagem</h2>

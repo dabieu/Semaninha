@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Music, User, ArrowRight, Check, AlertCircle } from 'lucide-react';
 import { useMobile } from '../hooks/useMobile';
 import { AuthMethod } from '../App';
@@ -31,6 +31,11 @@ export const AuthStep: React.FC<AuthStepProps> = ({
   const [showModal, setShowModal] = useState(false);
   const isMobile = useMobile(); // Hook para detectar dispositivo móvel
   
+  // Refs para controlar o foco da tela
+  const spotifyButtonRef = useRef<HTMLButtonElement>(null);
+  const lastfmInputRef = useRef<HTMLInputElement>(null);
+  const continueButtonRef = useRef<HTMLButtonElement>(null);
+  
   const spotifyService = SpotifyService.getInstance();
   const lastfmService = LastFmService.getInstance();
 
@@ -48,6 +53,34 @@ export const AuthStep: React.FC<AuthStepProps> = ({
   React.useEffect(() => {
     checkExistingAuth();
   }, [authMethod, isAuthenticated, onAuthenticate]);
+
+  // Controlar foco da tela baseado no authMethod
+  useEffect(() => {
+    if (authMethod === 'spotify') {
+      // Focar no botão "Conectar com Spotify"
+      setTimeout(() => {
+        spotifyButtonRef.current?.focus();
+        spotifyButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    } else if (authMethod === 'lastfm') {
+      // Focar no campo de texto do Last.fm
+      setTimeout(() => {
+        lastfmInputRef.current?.focus();
+        lastfmInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [authMethod]);
+
+  // Controlar foco quando usuário retorna da autenticação Spotify
+  useEffect(() => {
+    if (isAuthenticated && authMethod === 'spotify') {
+      // Focar no botão "Continuar" após autenticação
+      setTimeout(() => {
+        continueButtonRef.current?.focus();
+        continueButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 200);
+    }
+  }, [isAuthenticated, authMethod]);
 
   // Processar autenticação Spotify
   const processSpotifyAuth = useCallback(async (code: string, state: string) => {
@@ -335,6 +368,7 @@ export const AuthStep: React.FC<AuthStepProps> = ({
           {authMethod === 'spotify' && !isAuthenticated && (
             <>
               <button
+                ref={spotifyButtonRef}
                 onClick={handleSpotifyAuth}
                 disabled={isLoading}
                 className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center"
@@ -361,6 +395,7 @@ export const AuthStep: React.FC<AuthStepProps> = ({
               </label>
               <div className="flex gap-3">
                 <input
+                  ref={lastfmInputRef}
                   type="text"
                   value={lastfmInput}
                   onChange={(e) => setLastfmInput(e.target.value)}
@@ -422,6 +457,7 @@ export const AuthStep: React.FC<AuthStepProps> = ({
       {/* Continue Button */}
       {isAuthenticated && (
         <button
+          ref={continueButtonRef}
           onClick={onNext}
           className="bg-emerald-500 text-white hover:bg-emerald-600 px-8 py-3 rounded-lg font-semibold transition-colors duration-200 flex items-center mx-auto"
         >

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Download, Copy, Instagram, MessageCircle, RefreshCw, ArrowLeft, Check, X, Crown, Lock, Music, Eraser } from 'lucide-react';
 import { GridSize, TimePeriod } from '../App';
 import { CollageGenerator } from '../services/collageGenerator';
@@ -25,6 +25,11 @@ export function ResultStep({
   const [downloading, setDownloading] = React.useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const collageGenerator = new CollageGenerator();
+
+  // Focar no topo da tela quando o componente for montado
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleDownload = () => {
     setDownloading(true);

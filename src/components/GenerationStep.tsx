@@ -40,6 +40,11 @@ export function GenerationStep({
     generateRealCollage();
   }, [gridSize, timePeriod, authMethod, username, onGenerated, onNext]);
 
+  // Focar no topo da tela quando o componente for montado
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   const generateRealCollage = async () => {
     try {
       setError(null);
