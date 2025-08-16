@@ -23,13 +23,17 @@ export class CollageGenerator {
       showBandName?: boolean;
       showAlbumName?: boolean;
       backgroundColor?: string;
+      period?: string;
+      username?: string;
     } = {}
   ): Promise<string> {
     const {
       canvasSize = 1200,
       showBandName = false,
       showAlbumName = false,
-      backgroundColor = '#1a1a1a'
+      backgroundColor = '#1a1a1a',
+      period = '7day',
+      username = 'Usuário'
     } = options;
 
     const gridCount = parseInt(gridSize.split('x')[0]);
@@ -90,7 +94,7 @@ export class CollageGenerator {
     // Desenhar a colagem no canvas principal com padding
     this.ctx.drawImage(innerCanvas, padding, padding);
 
-    // Adicionar marca d'água "semaninha.app" na parte inferior
+    // Adicionar marca d'água dinâmica baseada no período
     this.ctx.fillStyle = '#000000'; // text-gray-600
     
     // Debug: verificar se a fonte está disponível
@@ -99,18 +103,23 @@ export class CollageGenerator {
     
     // Tentar usar a fonte personalizada, com fallback
     try {
-      this.ctx.font = 'bold 25px "Bryndan Write"';
+      this.ctx.font = 'bold 22px "Bryndan Write"'; // Reduzido de 25px para 22px para textos mais longos
       console.log('Fonte personalizada aplicada:', this.ctx.font);
     } catch (error) {
       console.warn('Erro ao aplicar fonte personalizada, usando fallback:', error);
-      this.ctx.font = 'bold 25px cursive'; // Fallback para fonte cursiva
+      this.ctx.font = 'bold 22px cursive'; // Fallback para fonte cursiva
     }
     
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     
-    const watermarkY = padding + canvasSize + bottomPadding + 20; // Posicionada na parte inferior da borda branca
-    this.ctx.fillText('Feito em: semaninha.app 🩷', totalWidth / 2, watermarkY);
+    // Gerar marca d'água baseada no período
+    const watermarkText = this.generateWatermarkText(period, username);
+    console.log('Marca d\'água gerada:', watermarkText);
+    
+    // Ajustar posicionamento para textos mais longos
+    const watermarkY = padding + canvasSize + bottomPadding + 25; // Aumentado de 20 para 25
+    this.ctx.fillText(watermarkText, totalWidth / 2, watermarkY);
 
     return this.canvas.toDataURL('image/png', 0.9);
   }
@@ -209,5 +218,29 @@ export class CollageGenerator {
   // Get canvas element for direct manipulation
   getCanvas(): HTMLCanvasElement {
     return this.canvas;
+  }
+
+  private generateWatermarkText(period: string, username: string): string {
+    let watermarkText = '';
+    
+    // Gerar texto baseado no período
+    switch (period) {
+      case '7day':
+        watermarkText = `Semaninha de ${username} | Feito em: semaninha.app 🩷`;
+        break;
+      case '1month':
+        watermarkText = `Mês de ${username} | Feito em: semaninha.app 🩷`;
+        break;
+      case '3month':
+        watermarkText = `Últimos 3 meses de ${username} | Feito em: semaninha.app 🩷`;
+        break;
+      case '12month':
+        watermarkText = `Último ano de ${username} | Feito em: semaninha.app 🩷`;
+        break;
+      default:
+        watermarkText = `Colagem de ${username} | Feito em: semaninha.app 🩷`;
+    }
+    
+    return watermarkText;
   }
 }

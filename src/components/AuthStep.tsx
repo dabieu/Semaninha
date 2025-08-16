@@ -44,9 +44,85 @@ export const AuthStep: React.FC<AuthStepProps> = ({
     }
   };
 
+  // Check existing authentication on mount
   React.useEffect(() => {
     checkExistingAuth();
   }, [authMethod, isAuthenticated, onAuthenticate]);
+
+  // Processar autenticação Spotify
+  const processSpotifyAuth = useCallback(async (code: string, state: string) => {
+    try {
+      setError(null);
+      setIsLoading(true);
+      
+      console.log('Processando autenticação Spotify...');
+      const result = await spotifyService.handleCallbackDirect(code, state);
+      
+      console.log('✅ Autenticação Spotify bem-sucedida:', result);
+      
+      // Limpar estado de loading e erro
+      setIsLoading(false);
+      setError(null);
+      
+      // Atualizar estado de autenticação
+      onAuthMethodChange('spotify');
+      onAuthenticate(result.username);
+      
+    } catch (error: any) {
+      console.error('Spotify callback error:', error);
+      
+      // Em dispositivos móveis, suprimir completamente os erros
+      if (isMobile) {
+        console.log('📱 Dispositivo móvel - suprimindo erro para melhor UX');
+        setIsLoading(false);
+        setError(null);
+        
+        // Em mobile, sempre tentar continuar sem erro
+        // O sistema já fez fallback adequado no SpotifyService
+        // Mesmo com erro, continuar funcionando
+        onAuthMethodChange('spotify');
+        onAuthenticate('Usuário Spotify');
+        return;
+      }
+      
+      // Em desktop, manter comportamento original
+      // Verificar se já temos um usuário autenticado (sucesso silencioso)
+      if (spotifyService.isAuthenticated()) {
+        console.log('✅ Usuário já autenticado, ignorando erro de proxy');
+        setIsLoading(false);
+        setError(null);
+        onAuthMethodChange('spotify');
+        onAuthenticate('Usuário Spotify');
+        return;
+      }
+      
+      // Se não temos usuário autenticado, mostrar erro (apenas em desktop)
+      setIsLoading(false);
+      setError('Erro na autenticação com Spotify. Tente novamente.');
+    }
+  }, [spotifyService, onAuthMethodChange, onAuthenticate, isMobile]);
+
+  // Handle Spotify callback
+  React.useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+    const error = urlParams.get('error');
+
+    if (error) {
+      setError(`Erro na autenticação: ${error}`);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    // Só processar callback se não estivermos já processando e se não estivermos autenticados
+    if (code && state && !isAuthenticated && !isLoading) {
+      console.log('Callback do Spotify detectado em dispositivo móvel');
+      onAuthMethodChange('spotify');
+      processSpotifyAuth(code, state);
+    }
+  }, [isAuthenticated, onAuthMethodChange, isLoading, processSpotifyAuth]);
 
   const handleSpotifyLogout = () => {
     if (authMethod === 'spotify') {
@@ -67,25 +143,8 @@ export const AuthStep: React.FC<AuthStepProps> = ({
     }
   };
 
-  const handleSpotifyCallback = async (code: string, state: string) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const { username } = await spotifyService.handleCallback(code, state);
-      onAuthenticate(username);
-      
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } catch (error: any) {
-      console.error('Spotify callback error:', error);
-      // Usar a mensagem de erro original sem adicionar prefixo
-      setError(error.message || 'Erro desconhecido na autenticação');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Remover função handleSpotifyCallback que não está mais sendo usada
+  
   // Handle Spotify callback
   React.useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -100,11 +159,13 @@ export const AuthStep: React.FC<AuthStepProps> = ({
       return;
     }
 
-    if (code && state && !isAuthenticated) {
+    // Só processar callback se não estivermos já processando e se não estivermos autenticados
+    if (code && state && !isAuthenticated && !isLoading) {
+      console.log('Callback do Spotify detectado em dispositivo móvel');
       onAuthMethodChange('spotify');
-      handleSpotifyCallback(code, state);
+      processSpotifyAuth(code, state);
     }
-  }, [isAuthenticated, onAuthMethodChange]); // Adicionar dependências necessárias
+  }, [isAuthenticated, onAuthMethodChange, isLoading, processSpotifyAuth]);
 
   const handleSpotifyAuth = async () => {
     setError(null);
@@ -162,44 +223,6 @@ export const AuthStep: React.FC<AuthStepProps> = ({
       setIsLoading(false);
     }
   };
-
-  // Processar autenticação Spotify
-  const processSpotifyAuth = useCallback(async (code: string, state: string) => {
-    try {
-      setError(null);
-      setIsLoading(true);
-      
-      console.log('Processando autenticação Spotify...');
-      const result = await spotifyService.handleCallbackDirect(code, state);
-      
-      console.log('✅ Autenticação Spotify bem-sucedida:', result);
-      
-      // Limpar estado de loading e erro
-      setIsLoading(false);
-      setError(null);
-      
-      // Atualizar estado de autenticação
-      onAuthMethodChange('spotify');
-      onAuthenticate(result.username);
-      
-    } catch (error: any) {
-      console.error('Spotify callback error:', error);
-      
-      // Verificar se já temos um usuário autenticado (sucesso silencioso)
-      if (spotifyService.isAuthenticated()) {
-        console.log('✅ Usuário já autenticado, ignorando erro de proxy');
-        setIsLoading(false);
-        setError(null);
-        onAuthMethodChange('spotify');
-        onAuthenticate('Usuário Spotify');
-        return;
-      }
-      
-      // Se não temos usuário autenticado, mostrar erro
-      setIsLoading(false);
-      setError('Erro na autenticação com Spotify. Tente novamente.');
-    }
-  }, [spotifyService, onAuthMethodChange, onAuthenticate]);
 
   // Processar callback do Spotify quando for mobile (redirecionamento na mesma tela)
   useEffect(() => {

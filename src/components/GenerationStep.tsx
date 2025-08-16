@@ -71,7 +71,9 @@ export function GenerationStep({
         canvasSize: 1200,
         showBandName,
         showAlbumName,
-        backgroundColor: '#1a1a1a'
+        backgroundColor: '#1a1a1a',
+        period: timePeriod,
+        username: username
       });
 
       setProgress(90);
