@@ -8,7 +8,7 @@ const REDIRECT_URI = import.meta.env.VITE_SPOTIFY_REDIRECT_URI || 'http://127.0.
 console.log('Spotify Service - Variáveis de ambiente:', {
   CLIENT_ID: CLIENT_ID ? '✅ Carregado' : '❌ Não carregado',
   REDIRECT_URI: REDIRECT_URI,
-  VITE_SPOTIFY_REDIRECT_URI: import.meta.env.SPOTIFY_REDIRECT_URI
+  VITE_SPOTIFY_REDIRECT_URI: import.meta.env.VITE_SPOTIFY_REDIRECT_URI
 });
 
 export interface SpotifyAlbum {
