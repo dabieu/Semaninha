@@ -2,7 +2,7 @@ import axios from 'axios';
 import { SpotifyProxy } from './spotifyProxy';
 
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-const REDIRECT_URI = 'http://127.0.0.1:3000';
+const REDIRECT_URI = import.meta.env.VITE_SPOTIFY_REDIRECT_URI || 'http://127.0.0.1:3000';
 
 export interface SpotifyAlbum {
   id: string;
