@@ -82,7 +82,9 @@ export function ResultStep({
   };
 
   const openModal = () => {
+    console.log('openModal chamada, estado atual:', isModalOpen);
     setIsModalOpen(true);
+    console.log('Modal aberto, novo estado:', true);
   };
   const closeModal = () => setIsModalOpen(false);
 
@@ -113,12 +115,23 @@ export function ResultStep({
       {/* Collage Display */}
       <div className="flex justify-center mb-8 px-4">
         <div className="bg-slate-700/50 p-4 sm:p-6 rounded-xl backdrop-blur-sm w-full max-w-md">
-          <div className="relative group cursor-pointer" onClick={openModal}>
+          <div 
+            className="relative group cursor-pointer" 
+            onClick={() => {
+              console.log('Clique na imagem detectado');
+              openModal();
+            }}
+            style={{ cursor: 'pointer' }}
+          >
             <img
               src={collageUrl}
               alt="Sua colagem musical"
-              className="rounded-lg shadow-lg w-full h-auto border border-slate-600/30 hover:scale-105 transition-transform duration-200"
+              className="rounded-lg shadow-lg w-full h-auto hover:scale-105 transition-transform duration-200"
               style={{ maxWidth: 'min(450px, 90vw)', maxHeight: 'min(450px, 90vw)' }}
+              onClick={() => {
+                console.log('Clique direto na imagem');
+                openModal();
+              }}
             />
             {/* Click indicator */}
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 rounded-lg flex items-center justify-center pointer-events-none">
@@ -282,7 +295,7 @@ export function ResultStep({
               <img
                 src={collageUrl}
                 alt="Sua colagem musical"
-                className="rounded-lg shadow-lg max-w-full h-auto border border-slate-600/30"
+                className="rounded-lg shadow-lg max-w-full h-auto"
                 style={{ maxHeight: '75vh', maxWidth: '100%' }}
               />
             </div>

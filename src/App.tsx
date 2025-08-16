@@ -68,8 +68,19 @@ function App() {
     });
   };
 
+  const handleLogout = () => {
+    console.log('App handleLogout called - clearing global state');
+    updateState({ 
+      isAuthenticated: false, 
+      username: '', 
+      authMethod: null 
+    });
+    console.log('Global state cleared successfully');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700">
+      
       {/* Navbar */}
       <nav className="bg-slate-800/90 backdrop-blur-lg border-b border-slate-600/30 sticky top-0 z-50">
         <div className="container mx-auto px-4">
@@ -133,6 +144,7 @@ function App() {
                 username={state.username}
                 onAuthMethodChange={(method) => updateState({ authMethod: method })}
                 onAuthenticate={(username) => updateState({ isAuthenticated: true, username })}
+                onLogout={handleLogout}
                 onNext={nextStep}
               />
             )}

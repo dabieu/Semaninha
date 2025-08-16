@@ -33,6 +33,9 @@ export class SpotifyService {
       'user-read-email'
     ].join(' ');
 
+    // Clear any existing state before generating new one
+    localStorage.removeItem('spotify_auth_state');
+    
     const state = this.generateRandomString(16);
     localStorage.setItem('spotify_auth_state', state);
 
@@ -42,6 +45,7 @@ export class SpotifyService {
       scope: scopes,
       redirect_uri: REDIRECT_URI,
       state: state,
+      prompt: 'login', // Force login screen to appear
     });
 
     return `https://accounts.spotify.com/authorize?${params.toString()}`;
@@ -50,6 +54,14 @@ export class SpotifyService {
   // Handle callback and exchange code for tokens
   async handleCallback(code: string, state: string): Promise<{ username: string }> {
     try {
+      // Validate state parameter to prevent CSRF attacks
+      const storedState = localStorage.getItem('spotify_auth_state');
+      console.log('State validation:', { storedState, receivedState: state, match: storedState === state });
+      
+      if (!storedState || storedState !== state) {
+        throw new Error('Estado de autenticação inválido. Tente novamente.');
+      }
+
       // Use proxy to avoid CORS issues
       const data = await this.spotifyProxy.exchangeCodeForToken(code, REDIRECT_URI);
 
@@ -57,17 +69,53 @@ export class SpotifyService {
       this.refreshToken = data.refresh_token;
 
       // Store tokens in localStorage
-      localStorage.setItem('spotify_access_token', this.accessToken);
+      if (this.accessToken) {
+        localStorage.setItem('spotify_access_token', this.accessToken);
+      }
       if (this.refreshToken) {
         localStorage.setItem('spotify_refresh_token', this.refreshToken);
       }
+
+      // Clear the state after successful authentication
+      localStorage.removeItem('spotify_auth_state');
 
       // Get user profile
       const userResponse = await this.makeAuthenticatedRequest('https://api.spotify.com/v1/me');
       return { username: userResponse.display_name || userResponse.id };
     } catch (error) {
       console.error('Error exchanging code for token:', error);
-      throw new Error(`Falha na autenticação: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      throw error; // Não adicionar prefixo, deixar a mensagem original
+    }
+  }
+
+  // Handle callback without state validation (for popup authentication)
+  async handleCallbackDirect(code: string, state: string): Promise<{ username: string }> {
+    try {
+      console.log('Processing callback without state validation for popup');
+      
+      // Use proxy to avoid CORS issues
+      const data = await this.spotifyProxy.exchangeCodeForToken(code, REDIRECT_URI);
+
+      this.accessToken = data.access_token;
+      this.refreshToken = data.refresh_token;
+
+      // Store tokens in localStorage
+      if (this.accessToken) {
+        localStorage.setItem('spotify_access_token', this.accessToken);
+      }
+      if (this.refreshToken) {
+        localStorage.setItem('spotify_refresh_token', this.refreshToken);
+      }
+
+      // Clear the state after successful authentication
+      localStorage.removeItem('spotify_auth_state');
+
+      // Get user profile
+      const userResponse = await this.makeAuthenticatedRequest('https://api.spotify.com/v1/me');
+      return { username: userResponse.display_name || userResponse.id };
+    } catch (error) {
+      console.error('Error exchanging code for token (direct):', error);
+      throw error;
     }
   }
 
@@ -145,7 +193,7 @@ export class SpotifyService {
     try {
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
+          'Authorization': `Bearer ${this.accessToken || ''}`,
         },
       });
       
@@ -165,7 +213,7 @@ export class SpotifyService {
         
         const response = await fetch(url, {
           headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
+            'Authorization': `Bearer ${this.accessToken || ''}`,
           },
         });
         
@@ -190,11 +238,13 @@ export class SpotifyService {
       const data = await this.spotifyProxy.refreshToken(refreshToken);
 
       this.accessToken = data.access_token;
-      localStorage.setItem('spotify_access_token', this.accessToken);
+      if (this.accessToken) {
+        localStorage.setItem('spotify_access_token', this.accessToken);
+      }
 
       if (data.refresh_token) {
         this.refreshToken = data.refresh_token;
-        localStorage.setItem('spotify_refresh_token', this.refreshToken);
+        localStorage.setItem('spotify_refresh_token', data.refresh_token);
       }
     } catch (error) {
       console.error('Error refreshing token:', error);
@@ -205,11 +255,33 @@ export class SpotifyService {
 
   // Clear stored tokens
   clearTokens(): void {
+    console.log('Clearing Spotify tokens from localStorage');
     this.accessToken = null;
     this.refreshToken = null;
     localStorage.removeItem('spotify_access_token');
     localStorage.removeItem('spotify_refresh_token');
     localStorage.removeItem('spotify_auth_state');
+    console.log('Spotify tokens cleared successfully');
+  }
+
+  // Logout user from Spotify
+  logout(): void {
+    console.log('Spotify logout called - clearing tokens and redirecting to logout');
+    this.clearTokens();
+    
+    // Force complete logout by redirecting to Spotify logout page
+    // This ensures the user can authenticate with a different account
+    const logoutUrl = 'https://accounts.spotify.com/logout';
+    
+    // Open logout in a new window/tab to avoid disrupting the main app
+    const logoutWindow = window.open(logoutUrl, '_blank', 'width=400,height=300');
+    
+    // Close the logout window after a short delay
+    if (logoutWindow) {
+      setTimeout(() => {
+        logoutWindow.close();
+      }, 2000);
+    }
   }
 
   // Generate random string for state parameter

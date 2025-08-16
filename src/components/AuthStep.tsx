@@ -10,6 +10,7 @@ interface AuthStepProps {
   username: string;
   onAuthMethodChange: (method: AuthMethod) => void;
   onAuthenticate: (username: string) => void;
+  onLogout: () => void;
   onNext: () => void;
 }
 
@@ -19,6 +20,7 @@ export function AuthStep({
   username,
   onAuthMethodChange,
   onAuthenticate,
+  onLogout,
   onNext
 }: AuthStepProps) {
   const [lastfmInput, setLastfmInput] = useState('');
@@ -29,50 +31,35 @@ export function AuthStep({
   const lastfmService = LastFmService.getInstance();
 
   // Check if already authenticated on component mount
-  React.useEffect(() => {
-    const checkExistingAuth = async () => {
-      if (authMethod === 'spotify' && !isAuthenticated) {
-        const username = await spotifyService.getStoredUser();
-        if (username) {
-          onAuthenticate(username);
-        }
+  const checkExistingAuth = async () => {
+    if (authMethod === 'spotify' && !isAuthenticated) {
+      const username = await spotifyService.getStoredUser();
+      if (username) {
+        onAuthenticate(username);
       }
-    };
+    }
+  };
 
+  React.useEffect(() => {
     checkExistingAuth();
   }, [authMethod, isAuthenticated, onAuthenticate]);
 
-  // Handle Spotify callback
-  React.useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const state = urlParams.get('state');
-    const error = urlParams.get('error');
-
-    if (error) {
-      setError(`Erro na autenticação: ${error}`);
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    if (code && state) {
-      onAuthMethodChange('spotify');
-      handleSpotifyCallback(code, state);
-    }
-  }, [authMethod]);
-
-  const handleSpotifyAuth = async () => {
-    setError(null);
-    setIsLoading(true);
-    
-    try {
-      const authUrl = spotifyService.getAuthUrl();
-      window.location.href = authUrl;
-    } catch (error) {
-      console.error('Spotify auth error:', error);
-      setError('Erro ao iniciar autenticação com Spotify');
-      setIsLoading(false);
+  const handleSpotifyLogout = () => {
+    if (authMethod === 'spotify') {
+      // Mostrar feedback visual de que está desconectando
+      setError(null);
+      setIsLoading(true);
+      
+      // Pequeno delay para mostrar o loading
+      setTimeout(() => {
+        spotifyService.logout();
+        // Sempre chamar onLogout para limpar o estado global
+        onLogout();
+        setIsLoading(false);
+      }, 500);
+    } else {
+      // Para Last.fm, apenas limpar estado local
+      onLogout();
     }
   };
 
@@ -88,7 +75,107 @@ export function AuthStep({
       window.history.replaceState({}, document.title, window.location.pathname);
     } catch (error: any) {
       console.error('Spotify callback error:', error);
-      setError(`Erro na autenticação: ${error.message || 'Erro desconhecido'}`);
+      // Usar a mensagem de erro original sem adicionar prefixo
+      setError(error.message || 'Erro desconhecido na autenticação');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Spotify callback
+  React.useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+    const error = urlParams.get('error');
+
+    if (error) {
+      setError(`Erro na autenticação: ${error}`);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (code && state && !isAuthenticated) {
+      onAuthMethodChange('spotify');
+      handleSpotifyCallback(code, state);
+    }
+  }, [isAuthenticated, onAuthMethodChange]); // Adicionar dependências necessárias
+
+  const handleSpotifyAuth = async () => {
+    setError(null);
+    setIsLoading(true);
+    
+    try {
+      const authUrl = spotifyService.getAuthUrl();
+      
+      // Abrir autenticação em nova janela popup
+      const popup = window.open(
+        authUrl,
+        'spotify-auth',
+        'width=500,height=600,scrollbars=yes,resizable=yes'
+      );
+      
+      if (!popup) {
+        throw new Error('Popup bloqueado pelo navegador. Permita popups para este site.');
+      }
+      
+      // Monitorar quando a janela é fechada
+      const checkClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkClosed);
+          setIsLoading(false);
+          // Verificar se há tokens armazenados
+          checkExistingAuth();
+        }
+      }, 1000);
+      
+      // Monitorar mudanças na URL da janela popup
+      const checkUrl = setInterval(() => {
+        try {
+          if (popup.closed) {
+            clearInterval(checkUrl);
+            return;
+          }
+          
+          const popupUrl = popup.location.href;
+          if (popupUrl.includes('code=') && popupUrl.includes('state=')) {
+            // Extrair code e state da URL
+            const urlParams = new URLSearchParams(popupUrl.split('?')[1]);
+            const code = urlParams.get('code');
+            const state = urlParams.get('state');
+            
+            if (code && state) {
+              clearInterval(checkUrl);
+              popup.close();
+              // Processar autenticação diretamente sem validação de estado
+              processSpotifyAuth(code, state);
+            }
+          }
+        } catch (error: any) {
+          // Erro de cross-origin, continuar monitorando
+        }
+      }, 500);
+      
+    } catch (error: any) {
+      console.error('Spotify auth error:', error);
+      setError(error.message || 'Erro ao iniciar autenticação com Spotify');
+      setIsLoading(false);
+    }
+  };
+
+  // Função separada para processar autenticação do popup
+  const processSpotifyAuth = async (code: string, state: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Usar o serviço diretamente sem validação de estado
+      const { username } = await spotifyService.handleCallbackDirect(code, state);
+      onAuthenticate(username);
+    } catch (error: any) {
+      console.error('Spotify callback error:', error);
+      setError(error.message || 'Erro desconhecido na autenticação');
     } finally {
       setIsLoading(false);
     }
@@ -132,7 +219,15 @@ export function AuthStep({
       <div className="grid md:grid-cols-2 gap-6 mb-8">
         {/* Spotify Option */}
         <div
-          onClick={() => onAuthMethodChange('spotify')}
+          onClick={() => {
+            if (authMethod !== 'spotify') {
+              // Se estiver trocando para Spotify, limpar estado de autenticação
+              if (isAuthenticated) {
+                onLogout();
+              }
+              onAuthMethodChange('spotify');
+            }
+          }}
           className={`p-6 rounded-xl cursor-pointer transition-all duration-300 ${
             authMethod === 'spotify'
               ? 'bg-emerald-500/20 border-2 border-emerald-400 shadow-lg scale-105'
@@ -150,7 +245,15 @@ export function AuthStep({
 
         {/* Last.fm Option */}
         <div
-          onClick={() => onAuthMethodChange('lastfm')}
+          onClick={() => {
+            if (authMethod !== 'lastfm') {
+              // Se estiver trocando para Last.fm, limpar estado de autenticação
+              if (isAuthenticated) {
+                onLogout();
+              }
+              onAuthMethodChange('lastfm');
+            }
+          }}
           className={`p-6 rounded-xl cursor-pointer transition-all duration-300 ${
             authMethod === 'lastfm'
               ? 'bg-orange-500/20 border-2 border-orange-400 shadow-lg scale-105'
@@ -189,9 +292,6 @@ export function AuthStep({
                   </>
                 )}
               </button>
-              <p className="text-white/60 text-xs mt-2">
-                Certifique-se de que seu perfil Last.fm é público
-              </p>
             </>
           )}
 
@@ -220,13 +320,44 @@ export function AuthStep({
                   )}
                 </button>
               </div>
+              <p className="text-white/60 text-xs mt-2">
+                Certifique-se de que seu perfil Last.fm é público
+              </p>
             </div>
           )}
 
-          {isAuthenticated && (
-            <div className="flex items-center justify-center text-white">
-              <Check className="h-6 w-6 text-emerald-400 mr-2" />
-              <span>Conectado como <strong>{username}</strong></span>
+          {/* Mostrar status de autenticação apenas se estiver autenticado na plataforma selecionada */}
+          {isAuthenticated && authMethod === 'spotify' && (
+            <div className="text-center">
+              <div className="flex items-center justify-center text-white mb-4">
+                <Check className="h-6 w-6 text-emerald-400 mr-2" />
+                <span>Conectado como <strong>{username}</strong></span>
+              </div>
+              <button
+                onClick={handleSpotifyLogout}
+                disabled={isLoading}
+                className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-500/50 text-white px-4 py-2 rounded-lg font-semibold transition-colors duration-200 text-sm"
+              >
+                {isLoading ? 'Desconectando...' : 'Conectar com outra conta'}
+              </button>
+              <p className="text-white/60 text-xs mt-2">
+                Encerrará a sessão atual e permitirá vincular outra conta
+              </p>
+            </div>
+          )}
+
+          {isAuthenticated && authMethod === 'lastfm' && (
+            <div className="text-center">
+              <div className="flex items-center justify-center text-white mb-4">
+                <Check className="h-6 w-6 text-emerald-400 mr-2" />
+                <span>Conectado como <strong>{username}</strong></span>
+              </div>
+              <button
+                onClick={() => onLogout()}
+                className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded-lg font-semibold transition-colors duration-200 text-sm"
+              >
+                Trocar de conta
+              </button>
             </div>
           )}
         </div>

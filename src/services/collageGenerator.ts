@@ -35,12 +35,28 @@ export class CollageGenerator {
     const gridCount = parseInt(gridSize.split('x')[0]);
     const imageSize = canvasSize / gridCount;
     
-    this.canvas.width = canvasSize;
-    this.canvas.height = canvasSize;
+    // Adicionar padding para as bordas brancas (efeito Polaroid)
+    const padding = Math.max(20, canvasSize * 0.025); // Reduzido de 5% para 2.5% e mínimo de 40px para 20px
+    const bottomPadding = Math.max(5, canvasSize * 0.006); // Borda inferior bem menor (1/4 da lateral)
+    const totalWidth = canvasSize + (padding * 2);
+    const totalHeight = canvasSize + padding + bottomPadding + 50; // Borda inferior bem menor + espaço para marca d'água
+    
+    this.canvas.width = totalWidth;
+    this.canvas.height = totalHeight;
 
-    // Fill background
-    this.ctx.fillStyle = backgroundColor;
-    this.ctx.fillRect(0, 0, canvasSize, canvasSize);
+    // Preencher o fundo com a cor das bordas
+    this.ctx.fillStyle = '#fffde8'; // Cor das bordas alterada para amarelo claro/creme
+    this.ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+    // Criar canvas interno para a colagem
+    const innerCanvas = document.createElement('canvas');
+    const innerCtx = innerCanvas.getContext('2d')!;
+    innerCanvas.width = canvasSize;
+    innerCanvas.height = canvasSize;
+
+    // Preencher fundo da colagem
+    innerCtx.fillStyle = backgroundColor;
+    innerCtx.fillRect(0, 0, canvasSize, canvasSize);
 
     // Load and draw images
     const promises = albums.slice(0, gridCount * gridCount).map(async (album, index) => {
@@ -51,25 +67,50 @@ export class CollageGenerator {
 
       try {
         const img = await this.loadImage(album.image);
-        this.ctx.drawImage(img, x, y, imageSize, imageSize);
+        innerCtx.drawImage(img, x, y, imageSize, imageSize);
 
         // Add subtle border
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(x, y, imageSize, imageSize);
+        innerCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        innerCtx.lineWidth = 1;
+        innerCtx.strokeRect(x, y, imageSize, imageSize);
 
         // Add labels if requested
         if ((showBandName || showAlbumName) && imageSize > 100) {
-          this.addLabels(album, x, y, imageSize, showBandName, showAlbumName);
+          this.addLabels(album, x, y, imageSize, showBandName, showAlbumName, innerCtx);
         }
       } catch (error) {
         console.warn(`Failed to load image for ${album.name}:`, error);
         // Draw placeholder
-        this.drawPlaceholder(x, y, imageSize, album);
+        this.drawPlaceholder(x, y, imageSize, album, innerCtx);
       }
     });
 
     await Promise.all(promises);
+
+    // Desenhar a colagem no canvas principal com padding
+    this.ctx.drawImage(innerCanvas, padding, padding);
+
+    // Adicionar marca d'água "semaninha.app" na parte inferior
+    this.ctx.fillStyle = '#000000'; // text-gray-600
+    
+    // Debug: verificar se a fonte está disponível
+    console.log('Fontes disponíveis:', document.fonts);
+    console.log('Tentando usar fonte: Bryndan Write');
+    
+    // Tentar usar a fonte personalizada, com fallback
+    try {
+      this.ctx.font = 'bold 25px "Bryndan Write"';
+      console.log('Fonte personalizada aplicada:', this.ctx.font);
+    } catch (error) {
+      console.warn('Erro ao aplicar fonte personalizada, usando fallback:', error);
+      this.ctx.font = 'bold 25px cursive'; // Fallback para fonte cursiva
+    }
+    
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    
+    const watermarkY = padding + canvasSize + bottomPadding + 20; // Posicionada na parte inferior da borda branca
+    this.ctx.fillText('Feito em: semaninha.app 🩷', totalWidth / 2, watermarkY);
 
     return this.canvas.toDataURL('image/png', 0.9);
   }
@@ -89,72 +130,72 @@ export class CollageGenerator {
     });
   }
 
-  private drawPlaceholder(x: number, y: number, size: number, album: Album): void {
+  private drawPlaceholder(x: number, y: number, size: number, album: Album, ctx: CanvasRenderingContext2D): void {
     // Draw colored background
     const colors = ['#8B5CF6', '#EC4899', '#F97316', '#10B981', '#3B82F6', '#EF4444'];
     const colorIndex = album.name.charCodeAt(0) % colors.length;
     
-    this.ctx.fillStyle = colors[colorIndex];
-    this.ctx.fillRect(x, y, size, size);
+    ctx.fillStyle = colors[colorIndex];
+    ctx.fillRect(x, y, size, size);
 
     // Add text
-    this.ctx.fillStyle = 'white';
-    this.ctx.font = `${Math.max(12, size / 15)}px Arial, sans-serif`;
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'white';
+    ctx.font = `${Math.max(12, size / 15)}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
 
     // Album name
     const albumName = album.name.length > 15 ? album.name.substring(0, 15) + '...' : album.name;
-    this.ctx.fillText(albumName, x + size / 2, y + size / 2 - 10);
+    ctx.fillText(albumName, x + size / 2, y + size / 2 - 10);
 
     // Artist name
-    this.ctx.font = `${Math.max(10, size / 20)}px Arial, sans-serif`;
+    ctx.font = `${Math.max(10, size / 20)}px Arial, sans-serif`;
     const artistName = album.artist.length > 20 ? album.artist.substring(0, 20) + '...' : album.artist;
-    this.ctx.fillText(artistName, x + size / 2, y + size / 2 + 10);
+    ctx.fillText(artistName, x + size / 2, y + size / 2 + 10);
   }
 
-  private addLabels(album: Album, x: number, y: number, size: number, showBandName: boolean, showAlbumName: boolean): void {
+  private addLabels(album: Album, x: number, y: number, size: number, showBandName: boolean, showAlbumName: boolean, ctx: CanvasRenderingContext2D): void {
     const padding = size * 0.02;
     const fontSize = Math.max(8, size / 25);
     const lineHeight = fontSize * 1.1;
     
-    this.ctx.textAlign = 'left';
-    this.ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
     
     let currentY = y + padding;
     
     // Add band name
     if (showBandName) {
-      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-      this.ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.font = `bold ${fontSize}px Arial, sans-serif`;
       
       const bandName = album.artist.length > 15 ? album.artist.substring(0, 15) + '...' : album.artist;
-      const bandMetrics = this.ctx.measureText(bandName);
+      const bandMetrics = ctx.measureText(bandName);
       
       // Background for band name
-      this.ctx.fillRect(x + padding - 1, currentY - 1, bandMetrics.width + 2, fontSize + 2);
+      ctx.fillRect(x + padding - 1, currentY - 1, bandMetrics.width + 2, fontSize + 2);
       
       // Band name text
-      this.ctx.fillStyle = 'white';
-      this.ctx.fillText(bandName, x + padding, currentY);
+      ctx.fillStyle = 'white';
+      ctx.fillText(bandName, x + padding, currentY);
       
       currentY += lineHeight + 1;
     }
     
     // Add album name
     if (showAlbumName) {
-      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-      this.ctx.font = `${fontSize}px Arial, sans-serif`;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.font = `${fontSize}px Arial, sans-serif`;
       
       const albumName = album.name.length > 20 ? album.name.substring(0, 20) + '...' : album.name;
-      const albumMetrics = this.ctx.measureText(albumName);
+      const albumMetrics = ctx.measureText(albumName);
       
       // Background for album name
-      this.ctx.fillRect(x + padding - 1, currentY - 1, albumMetrics.width + 2, fontSize + 2);
+      ctx.fillRect(x + padding - 1, currentY - 1, albumMetrics.width + 2, fontSize + 2);
       
       // Album name text
-      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-      this.ctx.fillText(albumName, x + padding, currentY);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.fillText(albumName, x + padding, currentY);
     }
   }
 

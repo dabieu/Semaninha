@@ -84,7 +84,12 @@ export class SpotifyProxy {
       return await proxyResponse.json();
     } catch (error) {
       console.error('Token exchange failed:', error);
-      throw new Error('Falha na autenticação: Não foi possível conectar ao Spotify. Verifique suas credenciais e configuração do redirect URI.');
+      // Retornar mensagem de erro mais específica sem duplicar prefixos
+      if (error instanceof Error) {
+        throw error; // Manter a mensagem original se já for um Error
+      } else {
+        throw new Error('Não foi possível conectar ao Spotify. Verifique suas credenciais e configuração do redirect URI.');
+      }
     }
   }
 
@@ -159,7 +164,12 @@ export class SpotifyProxy {
       return await proxyResponse.json();
     } catch (error) {
       console.error('Token refresh failed:', error);
-      throw new Error('Falha na renovação do token: Não foi possível conectar ao Spotify.');
+      // Retornar mensagem de erro mais específica sem duplicar prefixos
+      if (error instanceof Error) {
+        throw error; // Manter a mensagem original se já for um Error
+      } else {
+        throw new Error('Não foi possível renovar a conexão com o Spotify.');
+      }
     }
   }
 }
