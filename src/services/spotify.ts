@@ -4,6 +4,13 @@ import { SpotifyProxy } from './spotifyProxy';
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const REDIRECT_URI = import.meta.env.VITE_SPOTIFY_REDIRECT_URI || 'http://127.0.0.1:3000';
 
+// Debug: verificar se as variáveis estão sendo carregadas
+console.log('Spotify Service - Variáveis de ambiente:', {
+  CLIENT_ID: CLIENT_ID ? '✅ Carregado' : '❌ Não carregado',
+  REDIRECT_URI: REDIRECT_URI,
+  VITE_SPOTIFY_REDIRECT_URI: import.meta.env.VITE_SPOTIFY_REDIRECT_URI
+});
+
 export interface SpotifyAlbum {
   id: string;
   name: string;
