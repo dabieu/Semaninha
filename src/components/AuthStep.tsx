@@ -381,7 +381,7 @@ export const AuthStep: React.FC<AuthStepProps> = ({
                 ) : (
                   <>
                     <Music className="h-5 w-5 mr-2" />
-                    {isMobile ? 'Conectar com Spotify' : 'Conectar com Spotify (Popup)'}
+                    {isMobile ? 'Conectar com Spotify' : 'Conectar com Spotify'}
                   </>
                 )}
               </button>

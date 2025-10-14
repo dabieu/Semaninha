@@ -22,6 +22,7 @@ export class CollageGenerator {
       canvasSize?: number;
       showBandName?: boolean;
       showAlbumName?: boolean;
+      showUsername?: boolean;
       backgroundColor?: string;
       period?: string;
       username?: string;
@@ -31,6 +32,7 @@ export class CollageGenerator {
       canvasSize = 1200,
       showBandName = false,
       showAlbumName = false,
+      showUsername = true,
       backgroundColor = '#1a1a1a',
       period = '7day',
       username = 'Usuário'
@@ -113,8 +115,8 @@ export class CollageGenerator {
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     
-    // Gerar marca d'água baseada no período
-    const watermarkText = this.generateWatermarkText(period, username);
+    // Gerar marca d'água baseada no período e configurações
+    const watermarkText = this.generateWatermarkText(period, username, showUsername);
     console.log('Marca d\'água gerada:', watermarkText);
     
     // Ajustar posicionamento para textos mais longos
@@ -220,8 +222,13 @@ export class CollageGenerator {
     return this.canvas;
   }
 
-  private generateWatermarkText(period: string, username: string): string {
+  private generateWatermarkText(period: string, username: string, showUsername: boolean): string {
     let watermarkText = '';
+    
+    // Se não deve exibir o nome do usuário, mostrar apenas o texto padrão
+    if (!showUsername) {
+      return 'Feito em: semaninha.app 🩷';
+    }
     
     // Gerar texto baseado no período
     switch (period) {

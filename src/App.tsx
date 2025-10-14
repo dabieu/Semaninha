@@ -19,6 +19,7 @@ interface AppState {
   timePeriod: TimePeriod;
   showBandName: boolean;
   showAlbumName: boolean;
+  showUsername: boolean;
   albums: any[];
   collageUrl: string;
 }
@@ -33,6 +34,7 @@ function App() {
     timePeriod: '7day',
     showBandName: true,
     showAlbumName: true,
+    showUsername: true,
     albums: [],
     collageUrl: ''
   });
@@ -63,6 +65,7 @@ function App() {
       timePeriod: '7day',
       showBandName: true,
       showAlbumName: true,
+      showUsername: true,
       albums: [],
       collageUrl: ''
     });
@@ -155,10 +158,12 @@ function App() {
                 timePeriod={state.timePeriod}
                 showBandName={state.showBandName}
                 showAlbumName={state.showAlbumName}
+                showUsername={state.showUsername}
                 onGridSizeChange={(size) => updateState({ gridSize: size })}
                 onTimePeriodChange={(period) => updateState({ timePeriod: period })}
                 onShowBandNameChange={(show) => updateState({ showBandName: show })}
                 onShowAlbumNameChange={(show) => updateState({ showAlbumName: show })}
+                onShowUsernameChange={(show) => updateState({ showUsername: show })}
                 onNext={nextStep}
                 onBack={prevStep}
               />
@@ -172,6 +177,7 @@ function App() {
                 timePeriod={state.timePeriod}
                 showBandName={state.showBandName}
                 showAlbumName={state.showAlbumName}
+                showUsername={state.showUsername}
                 onGenerated={(albums, collageUrl) => updateState({ albums, collageUrl })}
                 onNext={nextStep}
                 onBack={prevStep}

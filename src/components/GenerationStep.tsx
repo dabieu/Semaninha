@@ -12,6 +12,7 @@ interface GenerationStepProps {
   timePeriod: TimePeriod;
   showBandName: boolean;
   showAlbumName: boolean;
+  showUsername: boolean;
   onGenerated: (albums: any[], collageUrl: string) => void;
   onNext: () => void;
   onBack: () => void;
@@ -24,6 +25,7 @@ export function GenerationStep({
   timePeriod,
   showBandName,
   showAlbumName,
+  showUsername,
   onGenerated,
   onNext,
   onBack
@@ -76,6 +78,7 @@ export function GenerationStep({
         canvasSize: 1200,
         showBandName,
         showAlbumName,
+        showUsername,
         backgroundColor: '#1a1a1a',
         period: timePeriod,
         username: username
