@@ -33,18 +33,51 @@ export function ResultStep({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     setDownloading(true);
     
-    // Create download link from the collage URL
-    const a = document.createElement('a');
-    a.href = collageUrl;
-    a.download = `semaninha-colagem-${gridSize}-${timePeriod}.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    
-    setDownloading(false);
+    try {
+      if (isMobile) {
+        // Para mobile, converter para blob e usar API de compartilhamento ou download
+        const response = await fetch(collageUrl);
+        const blob = await response.blob();
+        
+        // Tentar usar a API de compartilhamento nativa primeiro (se disponível)
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], 'colagem.png', { type: 'image/png' })] })) {
+          const file = new File([blob], `semaninha-${gridSize}-${timePeriod}.png`, { type: 'image/png' });
+          await navigator.share({
+            files: [file],
+            title: 'Minha Colagem Musical',
+            text: 'Confira minha colagem musical do Semaninha!'
+          });
+        } else {
+          // Fallback: criar URL do blob e abrir em nova aba para download manual
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = `semaninha-colagem-${gridSize}-${timePeriod}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          
+          // Liberar o blob URL após um tempo
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+        }
+      } else {
+        // Desktop: método tradicional
+        const a = document.createElement('a');
+        a.href = collageUrl;
+        a.download = `semaninha-colagem-${gridSize}-${timePeriod}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error('Erro ao baixar imagem:', error);
+      alert('Não foi possível baixar a imagem. Tente fazer uma captura de tela.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const handleCopyToClipboard = async () => {
@@ -52,23 +85,54 @@ export function ResultStep({
     
     try {
       if (isMobile) {
-        // Para dispositivos móveis, usar uma abordagem diferente
-        console.log('Usando método mobile para cópia');
-        await handleMobileCopy();
+        // Para dispositivos móveis, tentar compartilhamento nativo
+        console.log('Tentando compartilhamento nativo no mobile');
+        
+        const response = await fetch(collageUrl);
+        const blob = await response.blob();
+        
+        // Verificar se o navegador suporta compartilhamento de arquivos
+        if (navigator.share && navigator.canShare) {
+          const file = new File([blob], `semaninha-${gridSize}-${timePeriod}.png`, { type: 'image/png' });
+          
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'Minha Colagem Musical',
+              text: 'Confira minha colagem musical do Semaninha!'
+            });
+            return; // Sucesso no compartilhamento
+          }
+        }
+        
+        // Se compartilhamento não estiver disponível, tentar clipboard
+        if (navigator.clipboard && navigator.clipboard.write) {
+          try {
+            const item = new ClipboardItem({ 'image/png': blob });
+            await navigator.clipboard.write([item]);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+            return;
+          } catch (clipboardErr) {
+            console.log('Erro na API Clipboard:', clipboardErr);
+          }
+        }
+        
+        // Último fallback: informar o usuário
+        throw new Error('Copiar não suportado neste navegador. Use o botão de download ou compartilhamento.');
       } else {
         // Para desktop, usar a API Clipboard padrão
         console.log('Usando método desktop para cópia');
         await handleDesktopCopy();
       }
     } catch (err) {
-      console.error('Erro ao copiar imagem:', err);
-      // Fallback: tentar copiar a URL
-      try {
-        await navigator.clipboard.writeText(collageUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch (fallbackErr) {
-        console.error('Erro ao copiar URL:', fallbackErr);
+      console.error('Erro ao copiar/compartilhar imagem:', err);
+      
+      // Mostrar mensagem apropriada
+      if (isMobile) {
+        alert('Para salvar a imagem no celular, use o botão de Download ou faça uma captura de tela. 📸');
+      } else {
+        alert('Não foi possível copiar a imagem. Tente usar o botão de Download.');
       }
     }
   };
@@ -84,117 +148,6 @@ export function ResultStep({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleMobileCopy = async () => {
-    try {
-      // Para dispositivos móveis, tentar usar a API Clipboard se disponível
-      if (navigator.clipboard && navigator.clipboard.write) {
-        try {
-          const response = await fetch(collageUrl);
-          const blob = await response.blob();
-          
-          const item = new ClipboardItem({ 'image/png': blob });
-          await navigator.clipboard.write([item]);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-          return;
-        } catch (clipboardErr) {
-          console.log('Erro na API Clipboard, tentando alternativa...', clipboardErr);
-        }
-      }
-    } catch (err) {
-      console.log('API Clipboard não disponível no mobile, tentando alternativa...');
-    }
-
-    // Fallback para dispositivos móveis: usar canvas para gerar blob
-    try {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      
-      // Adicionar timeout para evitar travamentos
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout ao carregar imagem')), 10000);
-      });
-      
-      const imageLoadPromise = new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = () => reject(new Error('Erro ao carregar imagem'));
-      });
-      
-      // Race entre timeout e carregamento da imagem
-      await Promise.race([imageLoadPromise, timeoutPromise]);
-      
-      try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        if (!ctx) {
-          throw new Error('Não foi possível criar contexto do canvas');
-        }
-        
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        
-        // Tentar copiar usando o canvas
-        canvas.toBlob(async (blob) => {
-          if (blob && navigator.clipboard && navigator.clipboard.write) {
-            try {
-              const item = new ClipboardItem({ 'image/png': blob });
-              await navigator.clipboard.write([item]);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-              return;
-            } catch (writeErr) {
-              console.log('Erro ao escrever no clipboard:', writeErr);
-              // Fallback: copiar a URL
-              await fallbackCopyUrl();
-            }
-          } else {
-            // Fallback: copiar a URL
-            await fallbackCopyUrl();
-          }
-        }, 'image/png');
-      } catch (canvasErr) {
-        console.log('Erro no canvas:', canvasErr);
-        // Fallback: copiar a URL
-        await fallbackCopyUrl();
-      }
-      
-      img.src = collageUrl;
-    } catch (mobileErr) {
-      console.error('Erro na cópia mobile:', mobileErr);
-      // Fallback final: copiar a URL
-      await fallbackCopyUrl();
-    }
-  };
-
-  const fallbackCopyUrl = async () => {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(collageUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } else {
-        // Fallback para navegadores muito antigos
-        const textArea = document.createElement('textarea');
-        textArea.value = collageUrl;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        textArea.style.top = '-999999px';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    } catch (finalErr) {
-      console.error('Erro final ao copiar:', finalErr);
-      // Mostrar mensagem de erro para o usuário
-      alert('Não foi possível copiar a imagem. Tente fazer o download.');
-    }
-  };
 
   const handleShare = (platform: string) => {
     const text = `Minha colagem musical do Semaninha! 🎵 #semaninha #música`;
