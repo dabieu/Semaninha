@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ArrowRight, ArrowLeft, Grid3X3, Calendar, Music, Disc, Crown, Lock, User } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Grid3X3, Calendar, Music, Disc, Crown, Lock, User, ImageOff } from 'lucide-react';
 import { GridSize, TimePeriod } from '../App';
 import { Tooltip } from './Tooltip';
 
@@ -9,11 +9,13 @@ interface ConfigStepProps {
   showBandName: boolean;
   showAlbumName: boolean;
   showUsername: boolean;
+  hideAlbumsWithoutCover: boolean;
   onGridSizeChange: (size: GridSize) => void;
   onTimePeriodChange: (period: TimePeriod) => void;
   onShowBandNameChange: (show: boolean) => void;
   onShowAlbumNameChange: (show: boolean) => void;
   onShowUsernameChange: (show: boolean) => void;
+  onHideAlbumsWithoutCoverChange: (hide: boolean) => void;
   onNext: () => void;
   onBack: () => void;
 }
@@ -39,11 +41,13 @@ export function ConfigStep({
   showBandName,
   showAlbumName,
   showUsername,
+  hideAlbumsWithoutCover,
   onGridSizeChange,
   onTimePeriodChange,
   onShowBandNameChange,
   onShowAlbumNameChange,
   onShowUsernameChange,
+  onHideAlbumsWithoutCoverChange,
   onNext,
   onBack
 }: ConfigStepProps) {
@@ -242,6 +246,24 @@ export function ConfigStep({
                 type="checkbox"
                 checked={showUsername}
                 onChange={(e) => onShowUsernameChange(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-xl border border-slate-600">
+            <div className="flex items-center">
+              <ImageOff className="h-4 w-4 text-white mr-2" />
+              <div>
+                <div className="text-white font-medium text-sm">Ocultar álbuns com capa não encontrada</div>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hideAlbumsWithoutCover}
+                onChange={(e) => onHideAlbumsWithoutCoverChange(e.target.checked)}
                 className="sr-only peer"
               />
               <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>

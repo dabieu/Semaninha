@@ -20,6 +20,7 @@ interface AppState {
   showBandName: boolean;
   showAlbumName: boolean;
   showUsername: boolean;
+  hideAlbumsWithoutCover: boolean;
   albums: any[];
   collageUrl: string;
 }
@@ -35,6 +36,7 @@ function App() {
     showBandName: true,
     showAlbumName: true,
     showUsername: true,
+    hideAlbumsWithoutCover: false,
     albums: [],
     collageUrl: ''
   });
@@ -66,6 +68,7 @@ function App() {
       showBandName: true,
       showAlbumName: true,
       showUsername: true,
+      hideAlbumsWithoutCover: false,
       albums: [],
       collageUrl: ''
     });
@@ -159,11 +162,13 @@ function App() {
                 showBandName={state.showBandName}
                 showAlbumName={state.showAlbumName}
                 showUsername={state.showUsername}
+                hideAlbumsWithoutCover={state.hideAlbumsWithoutCover}
                 onGridSizeChange={(size) => updateState({ gridSize: size })}
                 onTimePeriodChange={(period) => updateState({ timePeriod: period })}
                 onShowBandNameChange={(show) => updateState({ showBandName: show })}
                 onShowAlbumNameChange={(show) => updateState({ showAlbumName: show })}
                 onShowUsernameChange={(show) => updateState({ showUsername: show })}
+                onHideAlbumsWithoutCoverChange={(hide) => updateState({ hideAlbumsWithoutCover: hide })}
                 onNext={nextStep}
                 onBack={prevStep}
               />
@@ -178,6 +183,7 @@ function App() {
                 showBandName={state.showBandName}
                 showAlbumName={state.showAlbumName}
                 showUsername={state.showUsername}
+                hideAlbumsWithoutCover={state.hideAlbumsWithoutCover}
                 onGenerated={(albums, collageUrl) => updateState({ albums, collageUrl })}
                 onNext={nextStep}
                 onBack={prevStep}

@@ -142,27 +142,54 @@ export class CollageGenerator {
   }
 
   private drawPlaceholder(x: number, y: number, size: number, album: Album, ctx: CanvasRenderingContext2D): void {
-    // Draw colored background
-    const colors = ['#8B5CF6', '#EC4899', '#F97316', '#10B981', '#3B82F6', '#EF4444'];
-    const colorIndex = album.name.charCodeAt(0) % colors.length;
-    
-    ctx.fillStyle = colors[colorIndex];
+    // Draw black background (same as collage background)
+    ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(x, y, size, size);
 
-    // Add text
+    // Add subtle border (same as normal images)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, size, size);
+
+    // Add labels in the same style as normal images (top-left corner)
+    const padding = size * 0.02;
+    const fontSize = Math.max(8, size / 25);
+    const lineHeight = fontSize * 1.1;
+    
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    
+    let currentY = y + padding;
+    
+    // Add artist name (band name)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    
+    const artistName = album.artist.length > 15 ? album.artist.substring(0, 15) + '...' : album.artist;
+    const artistMetrics = ctx.measureText(artistName);
+    
+    // Background for artist name
+    ctx.fillRect(x + padding - 1, currentY - 1, artistMetrics.width + 2, fontSize + 2);
+    
+    // Artist name text
     ctx.fillStyle = 'white';
-    ctx.font = `${Math.max(12, size / 15)}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Album name
-    const albumName = album.name.length > 15 ? album.name.substring(0, 15) + '...' : album.name;
-    ctx.fillText(albumName, x + size / 2, y + size / 2 - 10);
-
-    // Artist name
-    ctx.font = `${Math.max(10, size / 20)}px Arial, sans-serif`;
-    const artistName = album.artist.length > 20 ? album.artist.substring(0, 20) + '...' : album.artist;
-    ctx.fillText(artistName, x + size / 2, y + size / 2 + 10);
+    ctx.fillText(artistName, x + padding, currentY);
+    
+    currentY += lineHeight + 1;
+    
+    // Add album name
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.font = `${fontSize}px Arial, sans-serif`;
+    
+    const albumName = album.name.length > 20 ? album.name.substring(0, 20) + '...' : album.name;
+    const albumMetrics = ctx.measureText(albumName);
+    
+    // Background for album name
+    ctx.fillRect(x + padding - 1, currentY - 1, albumMetrics.width + 2, fontSize + 2);
+    
+    // Album name text
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillText(albumName, x + padding, currentY);
   }
 
   private addLabels(album: Album, x: number, y: number, size: number, showBandName: boolean, showAlbumName: boolean, ctx: CanvasRenderingContext2D): void {

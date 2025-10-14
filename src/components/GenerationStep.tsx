@@ -13,6 +13,7 @@ interface GenerationStepProps {
   showBandName: boolean;
   showAlbumName: boolean;
   showUsername: boolean;
+  hideAlbumsWithoutCover: boolean;
   onGenerated: (albums: any[], collageUrl: string) => void;
   onNext: () => void;
   onBack: () => void;
@@ -26,6 +27,7 @@ export function GenerationStep({
   showBandName,
   showAlbumName,
   showUsername,
+  hideAlbumsWithoutCover,
   onGenerated,
   onNext,
   onBack
@@ -40,12 +42,36 @@ export function GenerationStep({
 
   useEffect(() => {
     generateRealCollage();
-  }, [gridSize, timePeriod, authMethod, username, onGenerated, onNext]);
+  }, [gridSize, timePeriod, authMethod, username, hideAlbumsWithoutCover, onGenerated, onNext]);
 
   // Focar no topo da tela quando o componente for montado
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  // Função auxiliar para verificar se uma imagem é válida
+  const checkImageValid = async (imageUrl: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      const timeout = setTimeout(() => {
+        resolve(false);
+      }, 5000); // 5 segundos timeout
+      
+      img.onload = () => {
+        clearTimeout(timeout);
+        resolve(true);
+      };
+      
+      img.onerror = () => {
+        clearTimeout(timeout);
+        resolve(false);
+      };
+      
+      img.src = imageUrl;
+    });
+  };
 
   const generateRealCollage = async () => {
     try {
@@ -62,12 +88,42 @@ export function GenerationStep({
       const gridCount = parseInt(gridSize.split('x')[0]);
       const totalAlbums = gridCount * gridCount;
       
+      // Se devemos ocultar álbuns sem capa, buscar mais álbuns para ter margem de segurança
+      const fetchLimit = hideAlbumsWithoutCover ? totalAlbums * 3 : totalAlbums;
+      
       let albums;
       if (authMethod === 'spotify') {
         const timeRange = SpotifyService.convertTimePeriod(timePeriod);
-        albums = await spotifyService.getTopAlbums(timeRange, totalAlbums);
+        albums = await spotifyService.getTopAlbums(timeRange, fetchLimit);
       } else {
-        albums = await lastfmService.getTopAlbums(username, timePeriod, totalAlbums);
+        albums = await lastfmService.getTopAlbums(username, timePeriod, fetchLimit);
+      }
+
+      setProgress(50);
+
+      // Se devemos ocultar álbuns sem capa, filtrar apenas os que têm imagem válida
+      if (hideAlbumsWithoutCover) {
+        setCurrentStep('Verificando capas dos álbuns...');
+        
+        // Verificar álbuns em lotes para melhor performance
+        const validatedAlbums = [];
+        for (let i = 0; i < albums.length && validatedAlbums.length < totalAlbums; i++) {
+          const album = albums[i];
+          if (album.image && album.image !== '') {
+            const isValid = await checkImageValid(album.image);
+            if (isValid) {
+              validatedAlbums.push(album);
+            }
+          }
+        }
+        
+        // Se não tivermos álbuns suficientes com capa válida, usar todos os validados
+        albums = validatedAlbums.slice(0, totalAlbums);
+        
+        console.log(`Álbuns com capa válida: ${albums.length} de ${totalAlbums} necessários`);
+      } else {
+        // Usar apenas a quantidade necessária
+        albums = albums.slice(0, totalAlbums);
       }
 
       setProgress(60);
