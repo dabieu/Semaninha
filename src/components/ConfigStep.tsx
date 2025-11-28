@@ -10,6 +10,7 @@ interface ConfigStepProps {
   showAlbumName: boolean;
   showUsername: boolean;
   hideAlbumsWithoutCover: boolean;
+  isPremium?: boolean; // Prop para verificar se o usuário tem acesso premium
   onGridSizeChange: (size: GridSize) => void;
   onTimePeriodChange: (period: TimePeriod) => void;
   onShowBandNameChange: (show: boolean) => void;
@@ -42,6 +43,7 @@ export function ConfigStep({
   showAlbumName,
   showUsername,
   hideAlbumsWithoutCover,
+  isPremium = false, // Por padrão, usuário não é premium
   onGridSizeChange,
   onTimePeriodChange,
   onShowBandNameChange,
@@ -70,11 +72,14 @@ export function ConfigStep({
         
         <div className="grid md:grid-cols-4 gap-3">
           {gridSizes.map((size) => {
+            // Verificar se o usuário pode usar esta opção
+            const canUse = !size.premium || isPremium;
+            
             const cardContent = (
               <div
-                onClick={() => !size.premium && onGridSizeChange(size.value)}
+                onClick={() => canUse && onGridSizeChange(size.value)}
                 className={`p-3 rounded-xl transition-all duration-300 flex flex-col justify-center items-center text-center ${
-                  size.premium
+                  size.premium && !isPremium
                     ? 'bg-slate-600/50 border border-slate-500 cursor-not-allowed opacity-60'
                     : gridSize === size.value
                     ? 'bg-emerald-500/20 border-2 border-emerald-400 shadow-lg scale-105 cursor-pointer'
@@ -142,11 +147,14 @@ export function ConfigStep({
         
         <div className="grid md:grid-cols-3 gap-3">
           {timePeriods.map((period) => {
+            // Verificar se o usuário pode usar esta opção
+            const canUse = !period.premium || isPremium;
+            
             const cardContent = (
               <div
-                onClick={() => !period.premium && onTimePeriodChange(period.value)}
+                onClick={() => canUse && onTimePeriodChange(period.value)}
                 className={`p-3 rounded-xl transition-all duration-300 flex flex-col justify-center items-center text-center ${
-                  period.premium
+                  period.premium && !isPremium
                     ? 'bg-slate-600/50 border border-slate-500 cursor-not-allowed opacity-60'
                     : timePeriod === period.value
                     ? 'bg-emerald-500/20 border-2 border-emerald-400 shadow-lg scale-105 cursor-pointer'

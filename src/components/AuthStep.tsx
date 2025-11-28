@@ -4,6 +4,8 @@ import { useMobile } from '../hooks/useMobile';
 import { AuthMethod } from '../App';
 import { SpotifyService } from '../services/spotify';
 import { LastFmService } from '../services/lastfm';
+import { useAuth } from '../hooks/useAuth';
+import { userConnectionsService } from '../services/userConnections';
 
 interface AuthStepProps {
   authMethod: AuthMethod | null;
@@ -38,13 +40,54 @@ export const AuthStep: React.FC<AuthStepProps> = ({
   
   const spotifyService = SpotifyService.getInstance();
   const lastfmService = LastFmService.getInstance();
+  const { user } = useAuth();
 
   // Check if already authenticated on component mount
   const checkExistingAuth = async () => {
     if (authMethod === 'spotify' && !isAuthenticated) {
+      // Primeiro, tentar verificar se há conexão salva no banco (se usuário está logado)
+      if (user) {
+        try {
+          const connection = await userConnectionsService.getSpotifyConnection(user.id);
+          if (connection && connection.accessToken) {
+            // Carregar tokens do banco
+            const loaded = await spotifyService.loadTokensFromDatabase(
+              connection.accessToken,
+              connection.refreshToken || ''
+            );
+            
+            if (loaded) {
+              // Atualizar última utilização
+              await userConnectionsService.updateLastUsed(user.id, 'spotify');
+              
+              // Obter username e autenticar
+              const username = spotifyService.getCurrentUsername();
+              if (username) {
+                onAuthenticate(username);
+                return;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao verificar conexão salva:', error);
+        }
+      }
+
+      // Fallback: verificar localStorage (para usuários não logados ou sem conexão salva)
       const username = await spotifyService.getStoredUser();
       if (username) {
         onAuthenticate(username);
+      }
+    } else if (authMethod === 'lastfm' && !isAuthenticated && user) {
+      // Verificar se há conexão Last.fm salva
+      try {
+        const lastfmUsername = await userConnectionsService.getLastFmConnection(user.id);
+        if (lastfmUsername) {
+          onAuthenticate(lastfmUsername);
+          await userConnectionsService.updateLastUsed(user.id, 'lastfm');
+        }
+      } catch (error) {
+        console.error('Erro ao verificar conexão Last.fm:', error);
       }
     }
   };
@@ -52,7 +95,7 @@ export const AuthStep: React.FC<AuthStepProps> = ({
   // Check existing authentication on mount
   React.useEffect(() => {
     checkExistingAuth();
-  }, [authMethod, isAuthenticated, onAuthenticate]);
+  }, [authMethod, isAuthenticated, user]);
 
   // Controlar foco da tela baseado no authMethod
   useEffect(() => {
@@ -92,6 +135,27 @@ export const AuthStep: React.FC<AuthStepProps> = ({
       const result = await spotifyService.handleCallbackDirect(code, state);
       
       console.log('✅ Autenticação Spotify bem-sucedida:', result);
+      
+      // Se usuário está logado, salvar conexão no banco
+      if (user) {
+        try {
+          const accessToken = localStorage.getItem('spotify_access_token');
+          const refreshToken = localStorage.getItem('spotify_refresh_token');
+          
+          if (accessToken && refreshToken) {
+            await userConnectionsService.saveSpotifyConnection(
+              user.id,
+              accessToken,
+              refreshToken,
+              3600 // 1 hora (padrão do Spotify)
+            );
+            console.log('✅ Conexão Spotify salva no banco de dados');
+          }
+        } catch (saveError) {
+          console.error('Erro ao salvar conexão no banco:', saveError);
+          // Não bloquear o fluxo se falhar ao salvar
+        }
+      }
       
       // Limpar estado de loading e erro
       setIsLoading(false);
@@ -201,6 +265,11 @@ export const AuthStep: React.FC<AuthStepProps> = ({
   }, [isAuthenticated, onAuthMethodChange, isLoading, processSpotifyAuth]);
 
   const handleSpotifyAuth = async () => {
+    // Se já está autenticado, não fazer nada
+    if (isAuthenticated && authMethod === 'spotify') {
+      return;
+    }
+
     setError(null);
     setIsLoading(true);
     
@@ -366,26 +435,24 @@ export const AuthStep: React.FC<AuthStepProps> = ({
       {authMethod && (
         <div className="bg-slate-700/50 rounded-xl p-6 mb-6 backdrop-blur-sm">
           {authMethod === 'spotify' && !isAuthenticated && (
-            <>
-              <button
-                ref={spotifyButtonRef}
-                onClick={handleSpotifyAuth}
-                disabled={isLoading}
-                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Conectando...
-                  </>
-                ) : (
-                  <>
-                    <Music className="h-5 w-5 mr-2" />
-                    {isMobile ? 'Conectar com Spotify' : 'Conectar com Spotify'}
-                  </>
-                )}
-              </button>
-            </>
+            <button
+              ref={spotifyButtonRef}
+              onClick={handleSpotifyAuth}
+              disabled={isLoading}
+              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Conectando...
+                </>
+              ) : (
+                <>
+                  <Music className="h-5 w-5 mr-2" />
+                  Conectar com Spotify
+                </>
+              )}
+            </button>
           )}
 
           {authMethod === 'lastfm' && !isAuthenticated && (
@@ -420,9 +487,9 @@ export const AuthStep: React.FC<AuthStepProps> = ({
           {/* Mostrar status de autenticação apenas se estiver autenticado na plataforma selecionada */}
           {isAuthenticated && authMethod === 'spotify' && (
             <div className="text-center">
-              <div className="flex items-center justify-center text-white mb-4">
-                <Check className="h-6 w-6 text-emerald-400 mr-2" />
-                <span>Conectado como <strong>{username}</strong></span>
+              <div className="w-full bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg flex items-center justify-center mb-4">
+                <Check className="h-5 w-5 mr-2" />
+                <span>Conectado com Spotify como <strong>{username}</strong></span>
               </div>
               <button
                 onClick={handleSpotifyLogout}

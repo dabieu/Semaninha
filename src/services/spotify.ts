@@ -276,6 +276,39 @@ export class SpotifyService {
     }
   }
 
+  // Carregar tokens do banco de dados (quando usuário tem conexão salva)
+  async loadTokensFromDatabase(accessToken: string, refreshToken: string): Promise<boolean> {
+    try {
+      this.accessToken = accessToken;
+      this.refreshToken = refreshToken;
+      
+      // Salvar no localStorage também para compatibilidade
+      localStorage.setItem('spotify_access_token', accessToken);
+      if (refreshToken) {
+        localStorage.setItem('spotify_refresh_token', refreshToken);
+      }
+
+      // Verificar se o token é válido obtendo o perfil do usuário
+      const userResponse = await this.makeAuthenticatedRequest('https://api.spotify.com/v1/me');
+      this.username = userResponse.display_name || userResponse.id || 'Usuário Spotify';
+      
+      return true;
+    } catch (error) {
+      console.error('Erro ao carregar tokens do banco:', error);
+      // Se o token expirou, tentar refresh
+      if (refreshToken) {
+        try {
+          await this.refreshAccessToken();
+          return true;
+        } catch (refreshError) {
+          console.error('Erro ao fazer refresh do token:', refreshError);
+          return false;
+        }
+      }
+      return false;
+    }
+  }
+
   // Get top albums
   async getTopAlbums(timeRange: string, limit: number): Promise<SpotifyAlbum[]> {
     if (!this.accessToken) {
